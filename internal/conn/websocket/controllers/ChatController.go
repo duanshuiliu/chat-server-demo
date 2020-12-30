@@ -68,28 +68,50 @@ func (this *ChatController) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		switch m.Type {
-		// 私聊信息
-		case 10001:
-			var privateMsg protocol.PrivateMsg
-			err := mapstructure.Decode(m.Data, &privateMsg)
+		// 聊天信息
+		case protocol.MsgTypeChat:
+			var chatMsg protocol.ChatMsg
+			err := mapstructure.Decode(m.Data, &chatMsg)
 			if err != nil {
 				logger.NewLogger().Error("Websocket客户端 - 获取消息解析错误", zap.String("info", err.Error()))
 				continue
 			}
 
-			receiver, loaded := WebsocketClients.Pool.Load(privateMsg.ReceiverId)
-			if loaded {
-				receiverClient, ok := receiver.(*Client)
+			if chatMsg.Type == protocol.ChatTypeGroup {
+				WebsocketClients.Pool.Range(func(k, v interface{}) bool {
+					cli, ok := v.(*Client)
 
-				if ok {
-					sendMsg := &protocol.Message{
-						Type: m.Type,
-						Kind: m.Kind,
-						Data: make(map[string]interface{}),
+					if ok && cli.Id != client.Id {
+
+						sendMsg := &protocol.Message{
+							Type: m.Type,
+							Kind: m.Kind,
+							Data: make(map[string]interface{}),
+						}
+
+						sendMsg.Data = protocol.PackChatMsg(chatMsg.ReceiverId, chatMsg.Type, client.Id, client.Name, "", chatMsg.Content)
+						cli.ReceiveChan <- sendMsg
 					}
 
-					sendMsg.Data = protocol.PackPrivateMsg(client.Id, protocol.MsgTypeSingle, client.Id, client.Name, "", privateMsg.Content)
-					receiverClient.ReceiveChan <- sendMsg
+					return true
+				})
+
+			} else if chatMsg.Type == protocol.ChatTypeSingle {
+				receiver, loaded := WebsocketClients.Pool.Load(chatMsg.ReceiverId)
+
+				if loaded {
+					receiverClient, ok := receiver.(*Client)
+
+					if ok {
+						sendMsg := &protocol.Message{
+							Type: m.Type,
+							Kind: m.Kind,
+							Data: make(map[string]interface{}),
+						}
+
+						sendMsg.Data = protocol.PackChatMsg(client.Id, chatMsg.Type, client.Id, client.Name, "", chatMsg.Content)
+						receiverClient.ReceiveChan <- sendMsg
+					}
 				}
 			}
 		}

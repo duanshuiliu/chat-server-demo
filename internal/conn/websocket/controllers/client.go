@@ -28,7 +28,19 @@ func (this *ClientsPool) Run() {
 
 			this.Pool.Store(client.Id, client)
 
-			// 通知其它小伙伴
+			friendsMsg := &protocol.Message{
+				Type: protocol.MsgTypeRegister,
+				Kind: protocol.MsgKindText,
+				Data: make(map[string]interface{}),
+			}
+
+			friendsOfSendSelf := make([]map[string]interface{}, 0)
+			userOfSelf        := protocol.PackRegisterMsg(client.Id, protocol.ChatTypeSingle, client.Name, "")
+
+			// 设置一个公用群
+			userOfCommon := protocol.PackRegisterMsg(1, protocol.ChatTypeGroup, "群聊", "")
+			friendsOfSendSelf = append(friendsOfSendSelf, userOfCommon)
+
 			this.Pool.Range(func(k, v interface{}) bool {
 				cli, ok := v.(*Client)
 
@@ -40,15 +52,24 @@ func (this *ClientsPool) Run() {
 						Data: make(map[string]interface{}),
 					}
 
-					content := make([]map[string]interface{}, 0)
-					content = append(content, protocol.PackRegisterMsg(client.Id, protocol.MsgTypeSingle, client.Name, ""))
+					friendsOfSendOther := make([]map[string]interface{}, 0)
+					userOfOther        := protocol.PackRegisterMsg(cli.Id, protocol.ChatTypeSingle, cli.Name, "")
 
-					sendMsg.Data["users"] = content
+					friendsOfSendOther = append(friendsOfSendOther, userOfSelf)
+					friendsOfSendSelf  = append(friendsOfSendSelf, userOfOther)
+
+					// 通知其它小伙伴
+					sendMsg.Data["users"] = friendsOfSendOther
 					cli.ReceiveChan <- sendMsg
 				}
 
 				return true
 			})
+
+			// 获取当前存在的小伙伴列表
+			friendsMsg.Data["users"] = friendsOfSendSelf
+			client.ReceiveChan <- friendsMsg
+
 		case client := <- this.LeaveChan:
 			logger.NewLogger().Info("Websocket客户端 - 销毁", zap.Int("client", client.Id))
 
@@ -63,6 +84,30 @@ func (this *ClientsPool) Run() {
 				if err != nil {
 					logger.NewLogger().Error("Websocket客户端 - 关闭连接失败", zap.Int("client", client.Id), zap.String("info", err.Error()))
 				}
+
+				userOfSelf := protocol.PackRegisterMsg(client.Id, protocol.ChatTypeSingle, client.Name, "")
+
+				this.Pool.Range(func(k, v interface{}) bool {
+					cli, ok := v.(*Client)
+
+					if ok && cli.Id != client.Id {
+
+						sendMsg := &protocol.Message{
+							Type: protocol.MsgTypeLeave,
+							Kind: protocol.MsgKindText,
+							Data: make(map[string]interface{}),
+						}
+
+						friendsOfSendOther := make([]map[string]interface{}, 0)
+						friendsOfSendOther = append(friendsOfSendOther, userOfSelf)
+
+						// 通知其它小伙伴
+						sendMsg.Data["users"] = friendsOfSendOther
+						cli.ReceiveChan <- sendMsg
+					}
+
+					return true
+				})
 			} else {
 				logger.NewLogger().Info("Websocket客户端 - 已销毁", zap.Int("client", client.Id))
 			}

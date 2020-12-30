@@ -4,12 +4,13 @@ import "time"
 
 var (
 	MsgTypeRegister int = 10000  // 注册
-	MsgTypePrivate  int = 10001  // 私聊
+	MsgTypeChat     int = 10001  // 聊天
+	MsgTypeLeave    int = 10002  // 离开
 
 	MsgKindText     int = 1      // 纯文字
 
-	MsgTypeGroup    int = 1      // 群聊
-	MsgTypeSingle   int = 2      // 单聊
+	ChatTypeGroup    int = 1      // 群聊
+	ChatTypeSingle   int = 2      // 单聊
 )
 
 type Message struct {
@@ -18,7 +19,8 @@ type Message struct {
 	Data map[string]interface{} `json:"data"`
 }
 
-type PrivateMsg struct {
+type ChatMsg struct {
+	Type       int    `json:"type"`
 	ReceiverId int    `mapstructure:"receiver_id"`
 	Content    string `json:"content"`
 }
@@ -34,7 +36,7 @@ func PackRegisterMsg(chatId int, chatType int, chatName string, avatar string) m
 	return msg
 }
 
-func PackPrivateMsg(chatId int, chatType int, senderId int, senderName string, senderAvatar string, content string) map[string]interface{} {
+func PackChatMsg(chatId int, chatType int, senderId int, senderName string, senderAvatar string, content string) map[string]interface{} {
 	msg := make(map[string]interface{})
 
 	msg["chat_id"]       = chatId
